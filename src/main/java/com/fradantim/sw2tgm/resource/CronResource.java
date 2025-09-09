@@ -2,10 +2,12 @@ package com.fradantim.sw2tgm.resource;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -15,8 +17,11 @@ import com.fradantim.sw2tgm.service.TelegramService;
 
 @RestController
 public class CronResource {
-	@Value("${sw.tracks}")
-	private List<String> tracks;
+	@Value("${sw.tracks.daily}")
+	private List<String> dailyTracks;
+	
+	@Value("${sw.tracks.weekly}")
+	private List<String> weeklyTracks;
 
 	@Value("${telegram.chat-id.group.daily}")
 	private String dailyChat;
@@ -36,26 +41,31 @@ public class CronResource {
 	@Scheduled(cron = "${cron.send-daily}")
 	public void sendDaily() {
 		try {
-			sendNextDay();			
-		} catch (Exception e) {
-			telegramService.sendMessage(errorsChat, e.getMessage());
-			telegramService.sendMessage(errorsChat, ExceptionUtils.getStackTrace(e));
-		}		
-	}
-
-	@Scheduled(cron = "${cron.send-weekly}")
-	public void sendWeekly() {
-		try {
-			sendNextWeek();			
+			sendNextDay();
 		} catch (Exception e) {
 			telegramService.sendMessage(errorsChat, e.getMessage());
 			telegramService.sendMessage(errorsChat, ExceptionUtils.getStackTrace(e));
 		}
 	}
 
+	@Scheduled(cron = "${cron.send-weekly}")
+	public void sendWeekly() {
+		try {
+			sendNextWeek();
+		} catch (Exception e) {
+			telegramService.sendMessage(errorsChat, e.getMessage());
+			telegramService.sendMessage(errorsChat, ExceptionUtils.getStackTrace(e));
+		}
+	}
+
+	@GetMapping("/telegram/updates")
+	public Map<String, Object> getTelegramUpdates() {
+		return telegramService.getUpdates();
+	}
+
 	@PostMapping("/send/{date}")
 	public void sendDay(@PathVariable LocalDate date) {
-		swService.getWeekItemsByTrack(tracks, date).forEach((track, days) -> {
+		swService.getWeekItemsByTrack(dailyTracks, date).forEach((track, days) -> {
 			List<String> messages = telegramService.buildMessages(track, date, days.get(date));
 			telegramService.sendMessages(dailyChat, messages);
 		});
@@ -68,7 +78,7 @@ public class CronResource {
 
 	@PostMapping("/send/week/{start}")
 	public void sendWeek(@PathVariable LocalDate start) {
-		swService.getWeekItemsByTrack(tracks, start).forEach((track, days) -> days.forEach((day, items) -> {
+		swService.getWeekItemsByTrack(weeklyTracks, start).forEach((track, days) -> days.forEach((day, items) -> {
 			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
 			telegramService.sendMessages(weeklyChat, messages);
 		}));

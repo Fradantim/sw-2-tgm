@@ -5,6 +5,7 @@ telegram:
     max-length: 4000 # 4500
   url:
     send-message: https://api.telegram.org/bot${telegram.bot-token}/sendMessage
+    get-updates: https://api.telegram.org/bot${telegram.bot-token}/getUpdates
 #  chat-id:
 #    group:
 #      daily:

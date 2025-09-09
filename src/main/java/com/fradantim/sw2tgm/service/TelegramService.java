@@ -27,10 +27,18 @@ public class TelegramService {
 	@Value("${telegram.url.send-message}")
 	private String sendMessageUrl;
 
+	@Value("${telegram.url.get-updates}")
+	private String getUpdatesUrl;
+
 	private final RestClient restClient;
 
 	private TelegramService(RestClient restClient) {
 		this.restClient = restClient;
+	}
+
+	@SuppressWarnings("unchecked")
+	public Map<String, Object> getUpdates() {
+		return restClient.get().uri(getUpdatesUrl).retrieve().body(Map.class);
 	}
 
 	// https://core.telegram.org/bots/api#markdownv2-style
@@ -56,7 +64,7 @@ public class TelegramService {
 		sbuilders.add(new StringBuilder());
 		append(sbuilders, titleMessage);
 
-		if(items == null || items.isEmpty()) {
+		if (items == null || items.isEmpty()) {
 			append(sbuilders, "\nNada aqui...");
 		} else {
 			int count = 0;
@@ -75,7 +83,8 @@ public class TelegramService {
 
 				append(sbuilders, sb.toString());
 
-				if ("video".equals(item.type()) && item.mediaMetadata() != null && "youtube".equals(item.mediaProvider())) {
+				if ("video".equals(item.type()) && item.mediaMetadata() != null
+						&& "youtube".equals(item.mediaProvider())) {
 					Optional.ofNullable(item.mediaMetadata().get("raw"))
 							.map(raw -> Map.class.isAssignableFrom(raw.getClass()) ? (Map<String, Object>) raw : null)
 							.map(raw -> raw.get("player"))
@@ -107,10 +116,10 @@ public class TelegramService {
 				// athlete notes
 				if (StringUtils.hasText(item.athletesNotes().trim())) {
 					sb = new StringBuilder("\n");
-					if (item.athletesNotes().length() > 1024) {
+					if (item.athletesNotes().length() > 2048) {
 						sb.append("\\(existen notas para el atleta, pero es demasiado para ingresarlo aqui\\)");
 					} else {
-						sb.append("Notas para el atleta:\n**>"); // expandable block quotation
+						sb.append("**>Notas para el atleta:\n>"); // expandable block quotation
 						String athleteNotes = escapeForMarkdownV2Pattern(item.athletesNotes());
 						while (athleteNotes.endsWith("\n")) {
 							athleteNotes = athleteNotes.substring(0, athleteNotes.length() - 2);
@@ -155,11 +164,11 @@ public class TelegramService {
 			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
 		}
 	}
-	
+
 	public void sendMessages(String chatId, List<String> texts) {
 		int count = 0;
-		for(String text: texts) {
-			logger.info("Sending to {} {}/{} {}chars",chatId, ++count, texts.size(), text.length());
+		for (String text : texts) {
+			logger.info("Sending to {} {}/{} {}chars", chatId, ++count, texts.size(), text.length());
 			sendMessage(chatId, text);
 		}
 	}
