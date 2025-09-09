@@ -1,0 +1,41 @@
+services:
+  s2-2-tgm:
+    container_name: sw-2-tgm
+    restart: always
+    build: 
+      context: .
+      dockerfile_inline: |
+        FROM eclipse-temurin:21.0.8_9-jdk-noble
+        COPY . .
+        RUN sh mvnw clean package
+        CMD ["java", "-jar", "target/sw2tgm-0.0.1-SNAPSHOT.jar"]
+    ports:
+      - "8081:8080"
+    configs:
+      - source: application.yml
+        target: config/application.yml
+
+configs:
+  application.yml:
+    content: |
+      telegram:
+        bot-token: asd
+        chat-id:
+          group:
+            daily:  asd
+            weekly: asd
+          errors: asd
+
+      # mayhem daily  asd
+      # mayhem weekly asd
+      # me asd
+
+      sw:
+        login:
+          username: asd
+          password: asd
+        tracks: asd
+
+      cron:
+        send-daily:  asd
+        send-weekly: asd

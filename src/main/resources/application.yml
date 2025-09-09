@@ -1,0 +1,27 @@
+spring.application.name: sw2tgm
+
+telegram:
+  message:
+    max-length: 4000 # 4500
+  url:
+    send-message: https://api.telegram.org/bot${telegram.bot-token}/sendMessage
+#  chat-id:
+#    group:
+#      daily:
+#      weekly:
+#    errors: 
+
+sw:
+#   login:
+#     username:
+#     password:
+#  tracks: 
+  url:
+    base: https://app.sugarwod.com
+  api:
+    login: ${sw.url.base}/public/api/v1/login
+    workouts: ${sw.url.base}/api/workouts
+  page:
+    login: ${sw.url.base}/login
+    logout: ${sw.url.base}/logout
+    calendar: ${sw.url.base}/workouts/calendar
