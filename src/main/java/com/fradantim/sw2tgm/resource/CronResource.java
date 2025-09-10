@@ -69,6 +69,7 @@ public class CronResource {
 			List<String> messages = telegramService.buildMessages(track, date, days.get(date));
 			telegramService.sendMessages(dailyChat, messages);
 		});
+		telegramService.sendMessage(dailyChat, "🏋️");
 	}
 
 	@PostMapping("/send/tomorrow")
@@ -82,6 +83,7 @@ public class CronResource {
 			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
 			telegramService.sendMessages(weeklyChat, messages);
 		}));
+		telegramService.sendMessage(weeklyChat, "🏋️");
 	}
 
 	@PostMapping("/send/week/next")
