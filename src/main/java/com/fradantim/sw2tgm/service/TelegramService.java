@@ -60,10 +60,10 @@ public class TelegramService {
 	@SuppressWarnings("unchecked")
 	public List<String> buildMessages(String track, LocalDate date, List<WorkoutsResponseData> items) {
 		List<StringBuilder> sbuilders = new ArrayList<>();
-		String titleMessage = "📅 *" + escapeForMarkdownV2Pattern(track.trim() + " " + date) + "*";
+		String titleMessage = "*" + escapeForMarkdownV2Pattern(track.trim() + " " + date) + "*";
+		sbuilders.add(new StringBuilder("📅"));
 		sbuilders.add(new StringBuilder());
 		append(sbuilders, titleMessage);
-		sbuilders.add(new StringBuilder()); // new message
 
 		if (items == null || items.isEmpty()) {
 			append(sbuilders, "\nNada aqui...");
