@@ -2,9 +2,11 @@ package com.fradantim.sw2tgm.service;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 import org.slf4j.Logger;
@@ -16,6 +18,11 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 import com.fradantim.sw2tgm.dto.sw.WorkoutsResponse.WorkoutsResponseData;
+import com.fradantim.sw2tgm.dto.telegram.GetMyCommandsResponse;
+import com.fradantim.sw2tgm.dto.telegram.GetUpdatesResponse;
+
+import jakarta.annotation.Nullable;
+import jakarta.annotation.PostConstruct;
 
 @Service
 public class TelegramService {
@@ -29,17 +36,51 @@ public class TelegramService {
 
 	@Value("${telegram.url.get-updates}")
 	private String getUpdatesUrl;
+	
+	@Value("${telegram.url.get-me}")
+	private String getMeUrl;
+	
+	@Value("${telegram.url.get-my-commands}")
+	private String getMyCommandsUrl;
+	
+	@Value("${telegram.url.set-my-commands}")
+	private String setMyCommandsUrl;
+	
+	@Value("${telegram.url.send-chat-action}")
+	private String sendChatActionUrl;
+	
+	private String username = UUID.randomUUID().toString();
 
 	private final RestClient restClient;
 
 	private TelegramService(RestClient restClient) {
 		this.restClient = restClient;
 	}
-
-	@SuppressWarnings("unchecked")
-	public Map<String, Object> getUpdates() {
-		return restClient.get().uri(getUpdatesUrl).retrieve().body(Map.class);
+	
+	public String getUsername() {
+		return username;
 	}
+	
+	@PostConstruct
+	private void onStartUp() {
+		loadUsername();
+	}
+	
+	@SuppressWarnings("rawtypes")
+	private void loadUsername() {
+		logger.info("Getting bot username");
+		try {
+			username = ((Map) restClient.get().uri(getMeUrl).retrieve().toEntity(Map.class).getBody().get("result"))
+					.get("username").toString();
+			logger.info("I'm {}", username);
+		} catch (Exception e) {
+			logger.error("Error on username retrieval", e);
+		}
+	}	
+
+	public GetUpdatesResponse getUpdates(@Nullable Long offset) {
+		return restClient.get().uri(getUpdatesUrl, String.valueOf(offset)).retrieve().body(GetUpdatesResponse.class);
+	}	
 
 	// https://core.telegram.org/bots/api#markdownv2-style
 	private static final Pattern markdownV2Pattern = Pattern
@@ -66,7 +107,8 @@ public class TelegramService {
 		append(sbuilders, titleMessage);
 
 		if (items == null || items.isEmpty()) {
-			append(sbuilders, "\nNada aqui...");
+			append(sbuilders, "\n");
+			append(sbuilders, escapeForMarkdownV2Pattern("Nada aqui..."));
 		} else {
 			int count = 0;
 			for (WorkoutsResponseData item : items) {
@@ -153,15 +195,21 @@ public class TelegramService {
 	}
 
 	public void sendMessage(String chatId, String text) {
+		sendMessage(chatId, text, null);
+	}
+	
+	public void sendMessage(String chatId, String text, @Nullable String replyMessageId) {
+		Map<String, Object> reqBody = new HashMap<>(Map.of("chat_id", chatId, "text", text, "link_preview_options",
+				Map.of("is_disabled", true), "parse_mode", "MarkdownV2"));
+		if (replyMessageId != null) {
+			reqBody.put("reply_parameters", Map.of("message_id", replyMessageId));
+		}
 		try {
 			// try nice looking first
-			Map<String, Object> reqBody = Map.of("chat_id", chatId, "text", text, "link_preview_options",
-					Map.of("is_disabled", true), "parse_mode", "MarkdownV2");
 			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
 		} catch (RestClientException e) {
 			logger.error(e.getLocalizedMessage());
-			Map<String, Object> reqBody = Map.of("chat_id", chatId, "text", text, "link_preview_options",
-					Map.of("is_disabled", true));
+			reqBody.remove("parse_mode");
 			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
 		}
 	}
@@ -172,5 +220,17 @@ public class TelegramService {
 			logger.info("Sending to {} {}/{} {}chars", chatId, ++count, texts.size(), text.length());
 			sendMessage(chatId, text);
 		}
+	}
+	
+	public void sendTyping(String chatId) {
+		restClient.post().uri(sendChatActionUrl).body(Map.of("chat_id", chatId, "action", "typing")).retrieve().toBodilessEntity();
+	}
+	
+	public void setCommands(List<GetMyCommandsResponse.Command> commands) {
+		restClient.post().uri(setMyCommandsUrl).body(Map.of("commands", commands)).retrieve().toBodilessEntity();	
+	}
+	
+	public List<GetMyCommandsResponse.Command> getCommands() {
+		return restClient.get().uri(getMyCommandsUrl).retrieve().body(GetMyCommandsResponse.class).result();	
 	}
 }

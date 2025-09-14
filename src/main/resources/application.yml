@@ -5,7 +5,11 @@ telegram:
     max-length: 4000 # 4500
   url:
     send-message: https://api.telegram.org/bot${telegram.bot-token}/sendMessage
-    get-updates: https://api.telegram.org/bot${telegram.bot-token}/getUpdates
+    get-updates: https://api.telegram.org/bot${telegram.bot-token}/getUpdates?offset={offset}&allowed_updates=["message"]
+    get-me: https://api.telegram.org/bot${telegram.bot-token}/getMe
+    get-my-commands: https://api.telegram.org/bot${telegram.bot-token}/getMyCommands
+    set-my-commands: https://api.telegram.org/bot${telegram.bot-token}/setMyCommands
+    send-chat-action: https://api.telegram.org/bot${telegram.bot-token}/sendChatAction
 #  chat-id:
 #    group:
 #      daily:
@@ -22,6 +26,7 @@ sw:
   api:
     login: ${sw.url.base}/public/api/v1/login
     workouts: ${sw.url.base}/api/workouts
+    affiliate-session: ${sw.url.base}/api/affiliates/{affiliate}/session
   page:
     login: ${sw.url.base}/login
     logout: ${sw.url.base}/logout

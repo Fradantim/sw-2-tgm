@@ -9,7 +9,9 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -22,9 +24,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import com.fradantim.sw2tgm.dto.sw.AffiliateSessionResponse;
 import com.fradantim.sw2tgm.dto.sw.LoginResponse;
 import com.fradantim.sw2tgm.dto.sw.WorkoutsResponse;
-import com.fradantim.sw2tgm.dto.sw.LoginResponse.LoginResponseData;
 import com.fradantim.sw2tgm.dto.sw.WorkoutsResponse.WorkoutsResponseData;
 
 @Service
@@ -49,6 +51,8 @@ public class SWService {
 	private String loginApi;
 	@Value("${sw.api.workouts}")
 	private String workoutsApi;
+	@Value("${sw.api.affiliate-session}")
+	private String affiliateSessionApi;	
 
 	private final RestClient restClient;
 
@@ -100,7 +104,7 @@ public class SWService {
 				.headers(headers -> addCookies(cookies, headers)).body(loginRequestBody).retrieve()
 				.toEntity(LoginResponse.class);
 		loadCookies(cookies, apiResponse);
-		Optional.ofNullable(apiResponse.getBody()).map(LoginResponse::data).map(LoginResponseData::sessionToken)
+		Optional.ofNullable(apiResponse.getBody()).map(LoginResponse::data).map(LoginResponse.Data::sessionToken)
 				.ifPresentOrElse(s -> logger.info("got session token"), () -> logger.warn("got no session token"));
 		return apiResponse.getBody();
 	}
@@ -165,5 +169,36 @@ public class SWService {
 						date -> new ArrayList<>()).add(item));
 
 		return itemsByDay;
+	}
+	
+	public Set<String> getTracks() {
+		Map<String, HttpCookie> cookies = new LinkedHashMap<>();
+		String affiliateId = login(cookies).data().affiliate().objectId();
+		logger.info("Get session tracks");
+		ResponseEntity<AffiliateSessionResponse> apiResponse = restClient.get().uri(affiliateSessionApi, affiliateId)
+				.headers(headers -> addCookies(cookies, headers)).retrieve().toEntity(AffiliateSessionResponse.class);
+		loadCookies(cookies, apiResponse);
+		
+		Set<String> tracks = Optional.ofNullable(apiResponse.getBody())
+		.map(AffiliateSessionResponse::data)
+		.map(AffiliateSessionResponse.Data::athlete)
+		.map(AffiliateSessionResponse.Athlete::subscriptions)
+		.stream()
+		.flatMap(List::stream)
+		.filter(Objects::nonNull)
+		.map(AffiliateSessionResponse.Subscription::marketplaceProduct)
+		.filter(Objects::nonNull)
+		.map(AffiliateSessionResponse.MarketplaceProduct::publishingTracks)
+		.filter(Objects::nonNull)
+		.flatMap(List::stream)
+		.map(AffiliateSessionResponse.PublishingTrack::key).collect(Collectors.toSet());
+
+		try {
+			logout(cookies);
+		} catch (Exception e) {
+			logger.error("Error at logout {}", e.getLocalizedMessage());
+		}
+
+		return tracks;
 	}
 }
