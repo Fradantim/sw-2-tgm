@@ -47,7 +47,7 @@ public class CronResource {
 	@Value("${telegram.chat-id.errors}")
 	private String errorsChat;
 	
-	private AtomicLong lastOffset = new AtomicLong(0L); 
+	private AtomicLong lastOffset = null; 
 	
 	private Map<String, Consumer<GetUpdatesResponse.Update>> messageListeners = Map.of("/tracks", this::sendTracks,
 			"/today", this::today, "/tomorrow", this::tomorrow, "/week", this::week);
@@ -83,21 +83,30 @@ public class CronResource {
 	@Scheduled(cron = "${cron.updates}")
 	public void getUpdates() {
 		try {
-			logger.info("Getting messages with offset {}", lastOffset.get());
+			boolean work;
+			if(lastOffset == null) { //startup
+				work = false;
+				lastOffset = new AtomicLong(0L);
+			} else {
+				work = true;
+			}
+				
+			logger.info("Getting messages with offset {}, work={}", lastOffset.get(), work);
 			telegramService.getUpdates(lastOffset.get()).result().forEach(update -> {
 				logger.info("Processing message with offset {}", update.update_id());
-				if(lastOffset.get() <= update.update_id()) {
+				if (lastOffset.get() <= update.update_id()) {
 					lastOffset.set(update.update_id() + 1); // always advance
 				}
-				Optional.ofNullable(update.message()).map(GetUpdatesResponse.Message::text).ifPresent(text -> {
-					text = update.message().text().replaceAll("@"+telegramService.getUsername(), "").split(" ")[0];
-					Optional.ofNullable(messageListeners.get(text)).ifPresent(c -> {
-						telegramService.sendMessage(update.message().chat().id(), "On it 💪", update.message().message_id());
-						telegramService.sendTyping(update.message().chat().id());
-						c.accept(update);
-						telegramService.sendMessage(update.message().chat().id(), "Done 💪", update.message().message_id());
-					});					
-				});				
+				if (work)
+					Optional.ofNullable(update.message()).map(GetUpdatesResponse.Message::text).ifPresent(text -> {
+						text = update.message().text().replaceAll("@" + telegramService.getUsername(), "").split(" ")[0];
+						Optional.ofNullable(messageListeners.get(text)).ifPresent(c -> {
+							telegramService.sendMessage(update.message().chat().id(), "On it 💪", update.message().message_id());
+							telegramService.sendTyping(update.message().chat().id());
+							c.accept(update);
+							telegramService.sendMessage(update.message().chat().id(), "Done 💪", update.message().message_id());
+						});
+					});
 			});
 		} catch (Exception e) {
 			telegramService.sendMessage(errorsChat, e.getMessage());
@@ -183,7 +192,6 @@ public class CronResource {
 	// expected /today TRACK
 	private void today(GetUpdatesResponse.Update update) {
 		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
-		System.out.println();
 		if (text.split(" ").length < 2) {
 			// no args
 			sendAllDayTracks(LocalDate.now(), update.message().chat().id());
@@ -196,7 +204,6 @@ public class CronResource {
 	// expected /tomorrow TRACK
 	private void tomorrow(GetUpdatesResponse.Update update) {
 		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
-		System.out.println();
 		if (text.split(" ").length < 2) {
 			// no args
 			sendAllDayTracks(LocalDate.now().plusDays(1), update.message().chat().id());
@@ -209,7 +216,6 @@ public class CronResource {
 	// expected /week TRACK
 	private void week(GetUpdatesResponse.Update update) {
 		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
-		System.out.println();
 		if (text.split(" ").length < 2) {
 			// no args
 			sendAllWeekTracks(LocalDate.now(), update.message().chat().id());
