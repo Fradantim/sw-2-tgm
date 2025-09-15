@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -60,6 +61,10 @@ public class SWService {
 		this.restClient = restClient;
 	}
 
+	public Map<LocalDate, List<WorkoutsResponseData>> getWeekItemsByTrack(String track, LocalDate start) {
+		return getWeekItemsByTrack(Collections.singletonList(track), start).get(track);
+	}
+	
 	public Map<String, Map<LocalDate, List<WorkoutsResponseData>>> getWeekItemsByTrack(List<String> tracks,
 			LocalDate start) {
 		Map<String, HttpCookie> cookies = new LinkedHashMap<>();

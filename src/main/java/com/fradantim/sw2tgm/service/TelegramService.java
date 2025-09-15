@@ -12,8 +12,10 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -206,12 +208,33 @@ public class TelegramService {
 		}
 		try {
 			// try nice looking first
-			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
+			doSendMessage(reqBody);
 		} catch (RestClientException e) {
 			logger.error(e.getLocalizedMessage());
 			reqBody.remove("parse_mode");
-			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
+			doSendMessage(reqBody);
 		}
+	}
+	
+	private void doSendMessage(Object reqBody) {
+		try {
+			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
+		} catch (HttpStatusCodeException e) {
+			logger.warn("{}", e.getLocalizedMessage());
+			if(e.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value()
+					&& e.getResponseBodyAs(Map.class).get("parameters") instanceof Map<?,?> params 
+					&& params.get("retry_afer") instanceof Number retryAfter) {
+				try {
+					Thread.sleep(retryAfter.longValue() * 2 * 1000);
+					// last try
+					restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
+				} catch (InterruptedException e1) {
+					throw new RuntimeException(e);
+				}
+			} else {
+				throw e;
+			}
+		}		
 	}
 
 	public void sendMessages(String chatId, List<String> texts) {

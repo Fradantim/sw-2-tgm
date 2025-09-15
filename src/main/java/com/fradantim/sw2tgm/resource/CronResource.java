@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.fradantim.sw2tgm.dto.sw.WorkoutsResponse.WorkoutsResponseData;
 import com.fradantim.sw2tgm.dto.telegram.GetMyCommandsResponse;
 import com.fradantim.sw2tgm.dto.telegram.GetUpdatesResponse;
 import com.fradantim.sw2tgm.service.SWService;
@@ -48,7 +49,8 @@ public class CronResource {
 	
 	private AtomicLong lastOffset = new AtomicLong(0L); 
 	
-	private Map<String, Consumer<GetUpdatesResponse.Update>> messageListeners = Map.of("/tracks", this::sendTracks, "/today", this::today);
+	private Map<String, Consumer<GetUpdatesResponse.Update>> messageListeners = Map.of("/tracks", this::sendTracks,
+			"/today", this::today, "/tomorrow", this::tomorrow, "/week", this::week);
 
 	private final TelegramService telegramService;
 	private final SWService swService;
@@ -87,13 +89,15 @@ public class CronResource {
 				if(lastOffset.get() <= update.update_id()) {
 					lastOffset.set(update.update_id() + 1); // always advance
 				}
-				String text = update.message().text().replaceAll("@"+telegramService.getUsername(), "").split(" ")[0];
-				Optional.ofNullable(messageListeners.get(text)).ifPresent(c -> {
-					telegramService.sendMessage(update.message().chat().id(), "On it 💪", update.message().message_id());
-					telegramService.sendTyping(update.message().chat().id());
-					c.accept(update);
-					telegramService.sendMessage(update.message().chat().id(), "Done 💪", update.message().message_id());
-				});
+				Optional.ofNullable(update.message()).map(GetUpdatesResponse.Message::text).ifPresent(text -> {
+					text = update.message().text().replaceAll("@"+telegramService.getUsername(), "").split(" ")[0];
+					Optional.ofNullable(messageListeners.get(text)).ifPresent(c -> {
+						telegramService.sendMessage(update.message().chat().id(), "On it 💪", update.message().message_id());
+						telegramService.sendTyping(update.message().chat().id());
+						c.accept(update);
+						telegramService.sendMessage(update.message().chat().id(), "Done 💪", update.message().message_id());
+					});					
+				});				
 			});
 		} catch (Exception e) {
 			telegramService.sendMessage(errorsChat, e.getMessage());
@@ -114,7 +118,7 @@ public class CronResource {
 	@Scheduled(cron = "${cron.send-weekly}")
 	public void sendWeekly() {
 		try {
-			sendNextWeek(weeklyChat);
+			sendAllNextWeekTracks(weeklyChat);
 		} catch (Exception e) {
 			telegramService.sendMessage(errorsChat, e.getMessage());
 			telegramService.sendMessage(errorsChat, ExceptionUtils.getStackTrace(e));
@@ -137,14 +141,11 @@ public class CronResource {
 	
 	@PostMapping("/send/{date}/{track}")
 	public void sendDay(@PathVariable LocalDate date, @PathVariable String track, @RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.daily}") String chatId) {
-		swService.getWeekItemsByTrack(Collections.singletonList(track), date).forEach((retrievedTrack, days) -> {
-			List<String> messages = telegramService.buildMessages(retrievedTrack, date, days.get(date));
-			telegramService.sendMessages(chatId, messages);
-		});
+		Map<LocalDate, List<WorkoutsResponseData>> days = swService.getWeekItemsByTrack(track, date);
+		List<String> messages = telegramService.buildMessages(track, date, days.get(date));
+		telegramService.sendMessages(chatId, messages);
 		telegramService.sendMessage(chatId, "🏋️");
 	}
-	
-	
 
 	@PostMapping("/send/tomorrow")
 	public void sendAllNextDayTracks(@RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.daily}") String chatId) {
@@ -152,24 +153,34 @@ public class CronResource {
 	}
 
 	@PostMapping("/send/week/{start}")
-	public void sendWeek(@PathVariable LocalDate start, @RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
+	public void sendAllWeekTracks(@PathVariable LocalDate start, @RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
 		swService.getWeekItemsByTrack(weeklyTracks, start).forEach((track, days) -> days.forEach((day, items) -> {
 			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
 			telegramService.sendMessages(chatId, messages);
 		}));
 		telegramService.sendMessage(chatId, "🏋️");
 	}
+	
+	@PostMapping("/send/week/{start}/{track}")
+	public void sendWeek(@PathVariable LocalDate start, @PathVariable String track, @RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
+		Map<LocalDate, List<WorkoutsResponseData>> days = swService.getWeekItemsByTrack(track, start);
+		days.forEach((day, items) -> {
+			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
+			telegramService.sendMessages(chatId, messages);
+		});
+		telegramService.sendMessage(chatId, "🏋️");
+	}
 
 	@PostMapping("/send/week/next")
-	public void sendNextWeek(@RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
-		sendWeek(LocalDate.now().plusDays(1), chatId);
+	public void sendAllNextWeekTracks(@RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
+		sendAllWeekTracks(LocalDate.now().plusDays(1), chatId);
 	}
 	
 	private void sendTracks(GetUpdatesResponse.Update update) {
 		swService.getTracks().stream().map(telegramService::escapeForMarkdownV2Pattern).forEach(track -> telegramService.sendMessage( update.message().chat().id(), track));
 	}
 	
-	// expected "/today TRACK
+	// expected /today TRACK
 	private void today(GetUpdatesResponse.Update update) {
 		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
 		System.out.println();
@@ -178,6 +189,32 @@ public class CronResource {
 			sendAllDayTracks(LocalDate.now(), update.message().chat().id());
 		} else {
 			String track = text.substring("/today ".length());
+			sendDay(LocalDate.now(), track, update.message().chat().id());
+		}
+	}
+	
+	// expected /tomorrow TRACK
+	private void tomorrow(GetUpdatesResponse.Update update) {
+		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
+		System.out.println();
+		if (text.split(" ").length < 2) {
+			// no args
+			sendAllDayTracks(LocalDate.now().plusDays(1), update.message().chat().id());
+		} else {
+			String track = text.substring("/tomorrow ".length());
+			sendDay(LocalDate.now().plusDays(1), track, update.message().chat().id());
+		}
+	}
+	
+	// expected /week TRACK
+	private void week(GetUpdatesResponse.Update update) {
+		String text = update.message().text().replaceAll("@" + telegramService.getUsername(), "");
+		System.out.println();
+		if (text.split(" ").length < 2) {
+			// no args
+			sendAllWeekTracks(LocalDate.now(), update.message().chat().id());
+		} else {
+			String track = text.substring("/week ".length());
 			sendDay(LocalDate.now(), track, update.message().chat().id());
 		}
 	}
