@@ -12,10 +12,9 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.HttpClientErrorException.TooManyRequests;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
@@ -208,33 +207,32 @@ public class TelegramService {
 		}
 		try {
 			// try nice looking first
-			doSendMessage(reqBody);
+			doSendMessage(reqBody, 0);
 		} catch (RestClientException e) {
 			logger.error(e.getLocalizedMessage());
 			reqBody.remove("parse_mode");
-			doSendMessage(reqBody);
+			doSendMessage(reqBody, 0);
 		}
 	}
 	
-	private void doSendMessage(Object reqBody) {
+	private void doSendMessage(Object reqBody, int tries) {
 		try {
 			restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
-		} catch (HttpStatusCodeException e) {
-			logger.warn("{}", e.getLocalizedMessage());
-			if(e.getStatusCode().value() == HttpStatus.TOO_MANY_REQUESTS.value()
-					&& e.getResponseBodyAs(Map.class).get("parameters") instanceof Map<?,?> params 
-					&& params.get("retry_afer") instanceof Number retryAfter) {
+		} catch (TooManyRequests e) {
+			if (e.getResponseBodyAs(Map.class).get("parameters") instanceof Map<?, ?> params
+					&& params.get("retry_after") instanceof Number retryAfter) {
+				logger.warn("try: {}, wait {}, {}", tries, retryAfter, e.getLocalizedMessage());
 				try {
-					Thread.sleep(retryAfter.longValue() * 2 * 1000);
-					// last try
-					restClient.post().uri(sendMessageUrl).body(reqBody).retrieve().toBodilessEntity();
+					Thread.sleep(Double.valueOf(retryAfter.longValue() * 1.1 * 1000).longValue());
+					// try again
+					doSendMessage(reqBody, tries + 1);
 				} catch (InterruptedException e1) {
 					throw new RuntimeException(e);
 				}
 			} else {
 				throw e;
 			}
-		}		
+		}
 	}
 
 	public void sendMessages(String chatId, List<String> texts) {

@@ -1,7 +1,6 @@
 package com.fradantim.sw2tgm.resource;
 
 import java.time.LocalDate;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -165,6 +164,11 @@ public class CronResource {
 	public void sendAllWeekTracks(@PathVariable LocalDate start, @RequestParam(value= "chatId", defaultValue="${telegram.chat-id.group.weekly}") String chatId) {
 		swService.getWeekItemsByTrack(weeklyTracks, start).forEach((track, days) -> days.forEach((day, items) -> {
 			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
+			try {
+				Thread.sleep(1000); // try to cushion no more than n request per minute
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
 			telegramService.sendMessages(chatId, messages);
 		}));
 		telegramService.sendMessage(chatId, "🏋️");
@@ -175,6 +179,11 @@ public class CronResource {
 		Map<LocalDate, List<WorkoutsResponseData>> days = swService.getWeekItemsByTrack(track, start);
 		days.forEach((day, items) -> {
 			List<String> messages = telegramService.buildMessages(track, day, days.get(day));
+			try {
+				Thread.sleep(1000); // try to cushion no more than n request per minute
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
 			telegramService.sendMessages(chatId, messages);
 		});
 		telegramService.sendMessage(chatId, "🏋️");
